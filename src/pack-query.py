@@ -8,7 +8,7 @@ import numpy as np
 import networkx as nx
 
 Q   = nx.Graph()
-_   = [Q.add_edge(*e) for e in [(0, 1), (1, 2), (2, 3), (3, 0)]]
+_ = [Q.add_edge(*e) for e in [(0, 1), (1, 2), (2, 3), (0, 3)]]
 
 adj = nx.adjacency_matrix(Q)
 adj = ((adj + adj.T) > 0).astype(np.float32)

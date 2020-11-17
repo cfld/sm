@@ -9,7 +9,7 @@ from networkx.algorithms import isomorphism as iso
 _ = random.seed(123)
 _ = np.random.seed(234)
 
-n = 1000
+n = 1024
 
 G = nx.erdos_renyi_graph(n, p=0.01)
 
@@ -156,6 +156,7 @@ for i, z in enumerate(UMatcher(G_dict, Q_dict).match()):
   b.append(z)
 
 print((time() - t) * 1000)
+print('len(b)', len(b))
 
 # --
 # Check matches

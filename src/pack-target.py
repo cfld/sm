@@ -19,7 +19,7 @@ from networkx.algorithms import isomorphism as iso
 _ = random.seed(123)
 _ = np.random.seed(234)
 
-n = 1000
+n = 3000
 
 G   = nx.erdos_renyi_graph(n, p=0.01)
 adj = nx.adjacency_matrix(G)

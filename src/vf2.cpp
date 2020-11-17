@@ -1,4 +1,6 @@
-// apsp.cpp
+// vf2.cpp
+
+// There's some small bug here, I think
 
 #pragma GCC diagnostic ignored "-Wunused-result" 
 
@@ -16,7 +18,7 @@
 #include <algorithm>
 
 typedef int64_t Int;
-typedef std::map<Int, Int> Dict;
+typedef std::map<Int, Int> Map;
 typedef std::vector<Int> Set;
 
 Int g_nodes;
@@ -32,7 +34,9 @@ Int* Q_indices;
 using namespace std;
 using namespace std::chrono;
 
-void _boundary(Set& T, Dict& M, Int* indptr, Int* indices) {
+void compute_boundary(Set& T, Map& M, Int* indptr, Int* indices) {
+  // I'm sure this could be faster
+  
   // Clear T
   T.clear();
   
@@ -43,23 +47,44 @@ void _boundary(Set& T, Dict& M, Int* indptr, Int* indices) {
     }
   }  
   
-  // Uniqify
+  // Sort + uniq
   std::sort(T.begin(), T.end());
   auto last = std::unique(T.begin(), T.end());
   T.erase(last, T.end());
   
-  // Remove elements in M
+  // Remove elements in M from T
   for(auto it = M.begin(); it != M.end(); ++it) {
     T.erase(std::remove(T.begin(), T.end(), it->first), T.end());
   }
-  
 }
 
-bool sem_feasible(Int G_node, Int Q_node, Dict& M_G, Dict& M_Q, Set& T_G, Set& T_Q) {
+void update_boundary(Int node, Set& T, Map& M, Int* indptr, Int* indices) {
+  // I don't think this actually produces the same result as re-computing 
+  // boundary from scratch each time.  The nodes in T connected to`nodes` neighbor in M 
+  // should actually be dropped
+  
+  T.erase(std::remove(T.begin(), T.end(), node), T.end());
+  
+  for(Int offset = indptr[node]; offset < indptr[node + 1]; offset++) {
+    Int neib = indices[offset];
+    if(M.count(neib) == 0) {
+      auto ub = std::upper_bound(T.begin(), T.end(), neib);
+      if(ub == T.begin() || T[ub - T.begin() - 1] != neib) {
+        T.insert(ub, neib);
+      }
+    } 
+  }
+}
+
+bool sem_feasible(Int G_node, Int Q_node, Map& M_G, Map& M_Q, Set& T_G, Set& T_Q) {
   return true; // placeholder
 }
 
-bool syn_feasible(Int G_node, Int Q_node, Dict& M_G, Dict& M_Q, Set& T_G, Set& T_Q) {
+bool syn_feasible(Int G_node, Int Q_node, Map& M_G, Map& M_Q, Set& T_G, Set& T_Q) {
+  Int G_num;
+  Int Q_num;
+  Int neib;
+  
   Int G_start = G_indptr[G_node];
   Int G_end   = G_indptr[G_node + 1];
   
@@ -70,7 +95,7 @@ bool syn_feasible(Int G_node, Int Q_node, Dict& M_G, Dict& M_Q, Set& T_G, Set& T
   // Neighbors of A_node must match to neighbors of B_node (R_{pre,suc})
   
   for(Int offset = Q_start; offset < Q_end; offset++) {
-    Int neib = Q_indices[offset];
+    neib = Q_indices[offset];
     if(M_Q.count(neib) == 1) {
       if(!std::binary_search(G_indices + G_start, G_indices + G_end, M_Q[neib])) {
         return false;
@@ -79,7 +104,7 @@ bool syn_feasible(Int G_node, Int Q_node, Dict& M_G, Dict& M_Q, Set& T_G, Set& T
   }
 
   for(Int offset = G_start; offset < G_end; offset++) {
-    Int neib = G_indices[offset];
+    neib = G_indices[offset];
     if(M_G.count(neib) == 1) {
       if(!std::binary_search(Q_indices + Q_start, Q_indices + Q_end, M_G[neib])) {
         return false;
@@ -90,18 +115,18 @@ bool syn_feasible(Int G_node, Int Q_node, Dict& M_G, Dict& M_Q, Set& T_G, Set& T
   // --
   // G_node must have at least as many neighbors in T as Q_node (R_{in,out})
   
-  Int G_num = 0;
-  Int Q_num = 0;
+  G_num = 0;
+  Q_num = 0;
   
   for(Int offset = G_start; offset < G_end; offset++) {
-    Int neib = G_indices[offset];
+    neib = G_indices[offset];
     if(std::binary_search(T_G.begin(), T_G.end(), neib)) {
       G_num++;
     }
   }
 
   for(Int offset = Q_start; offset < Q_end; offset++) {
-    Int neib = Q_indices[offset];
+    neib = Q_indices[offset];
     if(std::binary_search(T_Q.begin(), T_Q.end(), neib)) {
       Q_num++;
     }
@@ -116,7 +141,7 @@ bool syn_feasible(Int G_node, Int Q_node, Dict& M_G, Dict& M_Q, Set& T_G, Set& T
   Q_num = 0;
   
   for(Int offset = G_start; offset < G_end; offset++) {
-    Int neib = G_indices[offset];
+    neib = G_indices[offset];
     if(
       M_G.count(neib) == 0 &&
       !std::binary_search(T_G.begin(), T_G.end(), neib)
@@ -126,7 +151,7 @@ bool syn_feasible(Int G_node, Int Q_node, Dict& M_G, Dict& M_Q, Set& T_G, Set& T
   }
 
   for(Int offset = Q_start; offset < Q_end; offset++) {
-    Int neib = Q_indices[offset];
+    neib = Q_indices[offset];
     if(
       M_Q.count(neib) == 0 &&
       !std::binary_search(T_Q.begin(), T_Q.end(), neib)
@@ -140,7 +165,7 @@ bool syn_feasible(Int G_node, Int Q_node, Dict& M_G, Dict& M_Q, Set& T_G, Set& T
   return true;
 }
 
-Int _do_match(Dict& M_G, Dict& M_Q, Set& T_G, Set& T_Q) {  
+Int _do_match(Map& M_G, Map& M_Q, Set& T_G, Set& T_Q) {  
   if((Int)M_Q.size() == q_nodes) {
     return 1;
   }
@@ -148,39 +173,43 @@ Int _do_match(Dict& M_G, Dict& M_Q, Set& T_G, Set& T_Q) {
   Int out    = 0;
   Int Q_node = T_Q[0]; // Minimum element
   
-  Set T_G_copy(T_G);
-  for(const auto& G_node : T_G_copy) {
+  // std::cout << T_G.size() << std::endl;
+  Set T_G_(T_G);
+  Set T_Q_(T_Q);
+  for(const auto& G_node : T_G_) {
     
     if(!sem_feasible(G_node, Q_node, M_G, M_Q, T_G, T_Q)) continue;
     if(!syn_feasible(G_node, Q_node, M_G, M_Q, T_G, T_Q)) continue;
     
     M_G[G_node] = Q_node;
     M_Q[Q_node] = G_node;
-    _boundary(T_G, M_G, G_indptr, G_indices);
-    _boundary(T_Q, M_Q, Q_indptr, Q_indices);
+    
+    update_boundary(G_node, T_G, M_G, G_indptr, G_indices);
+    update_boundary(Q_node, T_Q, M_Q, Q_indptr, Q_indices);
+    // compute_boundary(T_G, M_G, G_indptr, G_indices);
+    // compute_boundary(T_Q, M_Q, Q_indptr, Q_indices);
     
     out += _do_match(M_G, M_Q, T_G, T_Q);
     
     M_G.erase(G_node);
     M_Q.erase(Q_node);
-    _boundary(T_G, M_G, G_indptr, G_indices);
-    _boundary(T_Q, M_Q, Q_indptr, Q_indices);
+
+    T_G = T_G_;
+    T_Q = T_Q_;
   }
   
   return out;
 }
 
 Int do_match(Int G_node, Int Q_node) {
-  Dict M_G;
-  Dict M_Q;
-  Set T_G;
-  Set T_Q;
+  Map M_G, M_Q;
+  Set T_G, T_Q;
   
   M_G[G_node] = Q_node;
   M_Q[Q_node] = G_node;
   
-  _boundary(T_G, M_G, G_indptr, G_indices);
-  _boundary(T_Q, M_Q, Q_indptr, Q_indices);
+  compute_boundary(T_G, M_G, G_indptr, G_indices);
+  compute_boundary(T_Q, M_Q, Q_indptr, Q_indices);
   
   return _do_match(M_G, M_Q, T_G, T_Q);
 }
@@ -207,7 +236,7 @@ int main(int argc, char *argv[]) {
     fclose(fptr);
     
     // --
-    // Load target
+    // Load query
 
     fptr = fopen("query.bin", "rb");
 
@@ -226,14 +255,14 @@ int main(int argc, char *argv[]) {
     
     // --
     // Run
+    
     auto t1 = high_resolution_clock::now();
     
     Int n_matches = 0;
-    Int Q_node    = 0;
+    
+    #pragma omp parallel for schedule(dynamic) reduction(+: n_matches)
     for(Int G_node = 0; G_node < g_nodes; G_node++) {
-      // std::cout << "G_node: " << G_node << std::endl;
-      Int match = do_match(G_node, Q_node);
-      n_matches += match;
+      n_matches += do_match(G_node, 0);
     }
 
     auto elapsed = high_resolution_clock::now() - t1;
