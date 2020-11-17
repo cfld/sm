@@ -9,25 +9,26 @@ from networkx.algorithms import isomorphism as iso
 _ = random.seed(123)
 _ = np.random.seed(234)
 
-n = 50
+n = 1000
 
-G = nx.erdos_renyi_graph(n, p=0.05)
+G = nx.erdos_renyi_graph(n, p=0.01)
 
 Q = nx.Graph()
 _ = [Q.add_edge(*e) for e in [(0, 1), (1, 2), (2, 3), (0, 3)]]
 
-t = time()
+print('orig:')
+
+t  = time()
 GM = iso.GraphMatcher(G, Q)
-a = []
+a  = []
 for i, z in enumerate(GM.subgraph_isomorphisms_iter()):
   a.append(z)
-  # print(i, z)
 
 print(time() - t)
 
 # --
 
-class Matcher:
+class UMatcher:
   def __init__(self, G, Q):
     
     self.G = G
@@ -40,8 +41,8 @@ class Matcher:
     
     self.query_size = len(Q)
     
-    self.G_nodes = set(G.nodes())
-    self.Q_nodes = set(Q.nodes())
+    self.G_nodes = set(G.keys())
+    self.Q_nodes = set(Q.keys())
     
   def pairs(self):
     if self.T_G and self.T_Q:
@@ -49,6 +50,7 @@ class Matcher:
       C_Q = self.T_Q
     
     else:
+      print('NO T')
       C_G = self.G_nodes - set(self.M_G)
       C_Q = self.Q_nodes - set(self.M_Q)
     
@@ -56,15 +58,12 @@ class Matcher:
     for G_node in C_G:
       yield G_node, Q_node
   
-  def _boundary(self, G, M):
-    # !! Can update these incrementally, but this is simpler for now
-    
-    tmp = set([])
+  def _boundary(self, T, G, M):
+    T.clear()
     for node in M:
-      tmp |= set(G.neighbors(node))
+      T |= G[node]
     
-    tmp -= set(M)
-    return tmp
+    T -= set(M)
   
   def match(self, depth=0):
     if len(self.M_G) == self.query_size:
@@ -78,17 +77,16 @@ class Matcher:
         # Add to partial match + recompute boundary
         self.M_G[G_node] = Q_node
         self.M_Q[Q_node] = G_node
-        self.T_G = self._boundary(self.G, self.M_G)
-        self.T_Q = self._boundary(self.Q, self.M_Q)
+        self._boundary(self.T_G, self.G, self.M_G)
+        self._boundary(self.T_Q, self.Q, self.M_Q)
         
         yield from self.match(depth + 1)
         
         # Remove from partial match
         del self.M_G[G_node]
         del self.M_Q[Q_node]
-        self.T_G = self._boundary(self.G, self.M_G)
-        self.T_Q = self._boundary(self.Q, self.M_Q)
-        print('.' * len(self.M_G))
+        self._boundary(self.T_G, self.G, self.M_G)
+        self._boundary(self.T_Q, self.Q, self.M_Q)
   
   def sem_feasible(self, G_node, Q_node):
     return True
@@ -99,26 +97,29 @@ class Matcher:
     # --
     # Neighbors of A_node must match to neighbors of B_node (R_{pre,suc})
     
-    for neib in self.G.neighbors(G_node):
-      if neib in self.M_G:
-        if self.M_G[neib] not in self.Q.neighbors(Q_node):
+    G_neibs = self.G[G_node]
+    Q_neibs = self.Q[Q_node]
+    
+    for neib in Q_neibs:
+      if neib in self.M_Q:
+        if self.M_Q[neib] not in G_neibs:
           return False
     
-    for neib in self.Q.neighbors(Q_node):
-      if neib in self.M_Q:
-        if self.M_Q[neib] not in self.G.neighbors(G_node):
+    for neib in G_neibs:
+      if neib in self.M_G:
+        if self.M_G[neib] not in Q_neibs:
           return False
     
     # --
     # G_node must have at least as many neighbors in T as Q_node (R_{in,out})
     
     G_num = 0
-    for neib in self.G.neighbors(G_node):
+    for neib in G_neibs:
       if neib in self.T_G:
         G_num += 1
     
     Q_num = 0
-    for neib in self.Q.neighbors(Q_node):
+    for neib in Q_neibs:
       if neib in self.T_Q:
         Q_num += 1
     
@@ -129,12 +130,12 @@ class Matcher:
     # G_node must have at least as many neighbors outside of M + T as Q_node
     
     G_num = 0
-    for neib in self.G[G_node]:
+    for neib in G_neibs:
       if (neib not in self.T_G) and (neib not in self.M_G):
         G_num += 1
     
     Q_num = 0
-    for neib in self.Q[Q_node]:
+    for neib in Q_neibs:
       if (neib not in self.T_Q) and (neib not in self.M_Q):
         Q_num += 1
     
@@ -142,18 +143,19 @@ class Matcher:
       return False
   
     return True
-    
 
-print('-' * 50)
+print('bkj:')
 b = []
 
 t = time()
 
-for i, z in enumerate(Matcher(G, Q).match()):
-  b.append(z)
-  # print(i, z)
+G_dict = {n:set(G.neighbors(n)) for n in G}
+Q_dict = {n:set(Q.neighbors(n)) for n in Q}
 
-print(time() - t)
+for i, z in enumerate(UMatcher(G_dict, Q_dict).match()):
+  b.append(z)
+
+print((time() - t) * 1000)
 
 # --
 # Check matches
