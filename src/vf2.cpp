@@ -6,15 +6,10 @@
 
 #include <omp.h>
 
-#include <iostream>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <string.h>
-
 #include <chrono>
+#include <iostream>
+
 #include <map>
-#include <vector>
 #include <algorithm>
 
 typedef int64_t Int;
@@ -55,24 +50,6 @@ void compute_boundary(Set& T, Map& M, Int* indptr, Int* indices) {
   // Remove elements in M from T
   for(auto it = M.begin(); it != M.end(); ++it) {
     T.erase(std::remove(T.begin(), T.end(), it->first), T.end());
-  }
-}
-
-void update_boundary(Int node, Set& T, Map& M, Int* indptr, Int* indices) {
-  // I don't think this actually produces the same result as re-computing 
-  // boundary from scratch each time.  The nodes in T connected to`nodes` neighbor in M 
-  // should actually be dropped
-  
-  T.erase(std::remove(T.begin(), T.end(), node), T.end());
-  
-  for(Int offset = indptr[node]; offset < indptr[node + 1]; offset++) {
-    Int neib = indices[offset];
-    if(M.count(neib) == 0) {
-      auto ub = std::upper_bound(T.begin(), T.end(), neib);
-      if(ub == T.begin() || T[ub - T.begin() - 1] != neib) {
-        T.insert(ub, neib);
-      }
-    } 
   }
 }
 
@@ -173,21 +150,17 @@ Int _do_match(Map& M_G, Map& M_Q, Set& T_G, Set& T_Q) {
   Int out    = 0;
   Int Q_node = T_Q[0]; // Minimum element
   
-  // std::cout << T_G.size() << std::endl;
   Set T_G_(T_G);
   Set T_Q_(T_Q);
   for(const auto& G_node : T_G_) {
-    
     if(!sem_feasible(G_node, Q_node, M_G, M_Q, T_G, T_Q)) continue;
     if(!syn_feasible(G_node, Q_node, M_G, M_Q, T_G, T_Q)) continue;
     
     M_G[G_node] = Q_node;
     M_Q[Q_node] = G_node;
     
-    update_boundary(G_node, T_G, M_G, G_indptr, G_indices);
-    update_boundary(Q_node, T_Q, M_Q, Q_indptr, Q_indices);
-    // compute_boundary(T_G, M_G, G_indptr, G_indices);
-    // compute_boundary(T_Q, M_Q, Q_indptr, Q_indices);
+    compute_boundary(T_G, M_G, G_indptr, G_indices);
+    compute_boundary(T_Q, M_Q, Q_indptr, Q_indices);
     
     out += _do_match(M_G, M_Q, T_G, T_Q);
     
@@ -251,8 +224,6 @@ int main(int argc, char *argv[]) {
 
     fclose(fptr);
     
-    printf("g_nodes=%ld | g_edges=%ld | q_nodes=%ld | q_edges=%ld\n", g_nodes, g_edges, q_nodes, q_edges);
-    
     // --
     // Run
     
@@ -262,17 +233,22 @@ int main(int argc, char *argv[]) {
     
     #pragma omp parallel for schedule(dynamic) reduction(+: n_matches)
     for(Int G_node = 0; G_node < g_nodes; G_node++) {
-      n_matches += do_match(G_node, 0);
+      Int tmp = do_match(G_node, 0);
+      n_matches += tmp;
     }
 
     auto elapsed = high_resolution_clock::now() - t1;
     long long ms = duration_cast<milliseconds>(elapsed).count();
-    printf("elapsed=%lld\n", ms);
     
     // --
     // Log
     
-    printf("n_matches=%ld\n", n_matches);
+    std::cout << "g_nodes:"   << g_nodes   << " ";
+    std::cout << "g_edges:"   << g_edges   << " ";
+    std::cout << "q_nodes:"   << q_nodes   << " ";
+    std::cout << "q_edges:"   << q_edges   << " ";
+    std::cout << "n_matches:" << n_matches << " ";
+    std::cout << "elapsed:"   << ms        << std::endl;
     
     return 0;
 }

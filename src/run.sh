@@ -2,14 +2,8 @@
 
 # run.sh
 
-# --
-# Make data
-
-python pack-target.py data/jhu.mtx
 python pack-query.py
-
-# --
-
-# mkdir bin
-# make clean
-# make
+for N in 1000 1500 2000 2500 3000 3500 4000 4500 5000; do
+  python pack-target.py $N
+  OMP_NUM_THREADS=40 ./bin/vf2
+done
